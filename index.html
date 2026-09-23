@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculadora de Maíz</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0d6efd">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link href="vendor/bootstrap.min.css" rel="stylesheet">
+  <script src="vendor/bootstrap.bundle.min.js"></script>
+  <link href="icons/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background: #f5f6f8; font-family: system-ui, -apple-system, sans-serif; }
+    .card { border: none; box-shadow: 0 1px 3px rgba(0,0,0,.06); border-radius: 12px; }
+    .stat-value { font-size: 1.1rem; font-weight: 700; line-height: 1.2; }
+    .stat-label { font-size: .75rem; color: #6c757d; text-transform: uppercase; letter-spacing: .5px; }
+    .totals-card { background: linear-gradient(135deg, #ffffff 0%, #f8f9fb 100%); }
+    .totals-card .bs-focus { font-size: 2rem; }
+    .badge-online { background: #d1f4dd; color: #0f5132; }
+    .badge-offline { background: #f8d7da; color: #842029; }
+    .config-bar { background: #fff; border-radius: 12px; padding: .65rem 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+    .config-bar .sep { color: #dee2e6; }
+    .weighing-row { border-bottom: 1px solid #f0f1f3; }
+    .weighing-row:last-child { border-bottom: none; }
+    .weighing-row .idx { width: 32px; color: #adb5bd; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-light bg-white border-bottom mb-3">
+  <div class="container">
+    <span class="navbar-brand fw-bold">Calculadora de Maíz</span>
+    <span id="connBadge" class="badge badge-online">En línea</span>
+  </div>
+</nav>
+
+<div class="container pb-5" style="max-width: 720px;">
+  <!-- ══════════ CONFIG COMPACTA (precio + tasa) ══════════ -->
+  <div class="config-bar mb-3 d-flex justify-content-between align-items-center">
+    <div class="small">
+      <span class="text-muted">Precio:</span> <strong id="displayPrice">$0,18</strong>/kg
+      <span class="text-muted">Tasa:</span> <strong id="displayRate">853,49</strong> Bs
+      <span class="text-muted small" id="displaySource">(Manual)</span>
+    </div>
+    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#configModal">
+      <i class="bi bi-pencil-square"></i> Editar
+    </button>
+  </div>
+  
+  <!-- ══════════ TOTALES (foco central) ══════════ -->
+  <div class="card totals-card mb-3">
+    <div class="card-body py-4">
+      <div class="text-center mb-3">
+        <div class="stat-label">Total en Bolivares</div>
+        <div class="stat-value bs-focus text-primary" id="totalBs">Bs 0,00</div>
+      </div>
+      <div class="row text-center g-2">
+        <div class="col-3">
+          <div class="stat-label">Sacos</div>
+          <div class="stat-value" id="totalBags">0</div>
+        </div>
+        <div class="col-3">
+          <div class="stat-label">Kilos</div>
+          <div class="stat-value" id="totalKg">0</div>
+        </div>
+        <div class="col-3">
+          <div class="stat-label">USD</div>
+          <div class="stat-value text-success" id="totalUsd">$0,00</div>
+        </div>
+        <div class="col-3">
+          <div class="stat-label">Pesajes</div>
+          <div class="stat-value" id="totalWeighings">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ REGISTRAR PESAJE ══════════ -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <h6 class="fw-bold mb-3">Registrar pesaje</h6>
+      <div class="row g-2 align-items-end">
+        <div class="col-3">
+          <label class="form-label small text-muted mb-1">Sacos</label>
+          <input type="number" min="1" step="1" id="inputBags" class="form-control" placeholder="3">
+        </div>
+        <div class="col-5">
+          <label class="form-label small text-muted mb-1">Peso total (kg)</label>
+          <input type="number" min="0" step="0.01" id="inputKg" class="form-control" placeholder="135">
+        </div>
+        <div class="col-4">
+          <button class="btn btn-success w-100" id="btnAddWeighing">
+            <i class="bi bi-plus-lg"></i> Agregar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ LISTA DE PESAJES (reciente arriba) ══════════ -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <h6 class="fw-bold mb-2">Pesajes registrados</h6>
+      <div id="weighingsList">
+        <div class="text-center text-muted py-3 small">Sin pesajes registrados</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ ACCIONES DE LOTE ══════════ -->
+  <div class="d-flex gap-2 mb-3">
+    <button class="btn btn-primary flex-fill" id="btnSaveBatch">
+      <i class="bi bi-save"></i> Guardar lote
+    </button>
+    <button class="btn btn-outline-secondary" id="btnNewBatch">
+      <i class="bi bi-file-earmark-plus"></i> Nuevo
+    </button>
+  </div>
+
+  <!-- ══════════ LOTES GUARDADOS ══════════ -->
+  <div class="card">
+    <div class="card-body">
+      <h6 class="fw-bold mb-3">Lotes guardados</h6>
+      <div id="batchesList" class="text-muted small">Sin lotes guardados</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════ MODAL: Editar precio y tasa ══════════ -->
+<div class="modal fade" id="configModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-bold">Precio y tasa</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small text-muted">Precio de compra (USD/kg)</label>
+          <input type="number" step="0.01" min="0" id="modalPrice" class="form-control">
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small text-muted">Fuente de tasa</label>
+          <select id="modalSource" class="form-select">
+            <option value="Manual">Manual</option>
+            <option value="BCV">BCV oficial</option>
+            <option value="Paralelo">Paralelo</option>
+            <option value="P2P">Binance P2P</option>
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small text-muted">Tasa (Bs/USD)</label>
+          <div class="input-group">
+            <input type="number" step="0.01" min="0" id="modalRate" class="form-control">
+            <button class="btn btn-outline-secondary" id="btnFetchRate" type="button" title="Consultar API">
+              <i class="bi bi-arrow-repeat"></i>
+            </button>
+          </div>
+          <small class="text-muted d-block mt-1" id="rateInfo">Editable manualmente</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        <button class="btn btn-primary" id="btnApplyConfig" data-bs-dismiss="modal">Aplicar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL: Nombre del lote ══════════ -->
+<div class="modal fade" id="nameModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-bold">Guardar lote</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small text-muted">Nombre del lote</label>
+        <input type="text" id="batchNameInput" class="form-control" placeholder="Ej: Turno mañana">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary" id="btnConfirmSaveBatch">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ══════════ ESTADO ══════════
+const STORAGE_KEY = 'calc_maiz_v2';
+let state = {
+  current: { weighings: [], pricePerKg: 0.18, exchangeRate: 853.49, rateSource: 'Manual' },
+  batches: []
+};
+
+// ══════════ PERSISTENCIA ══════════
+function loadState() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.current) state.current = { ...state.current, ...parsed.current };
+    if (parsed.batches) state.batches = parsed.batches;
+  } catch(e) { console.warn('Estado corrupto, se reinicia'); }
+}
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+// ══════════ CÁLCULOS ══════════
+function computeTotals() {
+  const w = state.current.weighings;
+  const totalBags = w.reduce((s, x) => s + Number(x.bags || 0), 0);
+  const totalKg   = w.reduce((s, x) => s + Number(x.kg || 0), 0);
+  const totalUsd  = totalKg * Number(state.current.pricePerKg || 0);
+  const totalBs   = totalUsd * Number(state.current.exchangeRate || 0);
+  return { totalBags, totalKg, totalUsd, totalBs, count: w.length };
+}
+
+// ══════════ FORMATO ══════════
+const fmtBs = n => 'Bs ' + Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtUsd = n => '$' + Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtKg = n => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// ══════════ RENDER ══════════
+function render() {
+  // Totales
+  const t = computeTotals();
+  document.getElementById('totalBs').textContent = fmtBs(t.totalBs);
+  document.getElementById('totalBags').textContent = t.totalBags;
+  document.getElementById('totalKg').textContent = fmtKg(t.totalKg);
+  document.getElementById('totalUsd').textContent = fmtUsd(t.totalUsd);
+  document.getElementById('totalWeighings').textContent = t.count;
+
+  // Barra de config
+  document.getElementById('displayPrice').textContent = '$' + Number(state.current.pricePerKg).toFixed(2);
+  document.getElementById('displayRate').textContent = Number(state.current.exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.getElementById('displaySource').textContent = '(' + state.current.rateSource + ')';
+
+  // Lista de pesajes — más reciente arriba
+  const list = document.getElementById('weighingsList');
+  if (state.current.weighings.length === 0) {
+    list.innerHTML = '<div class="text-center text-muted py-3 small">Sin pesajes registrados</div>';
+  } else {
+    // Se invierte para mostrar el último agregado arriba
+    const reversed = [...state.current.weighings].reverse();
+    list.innerHTML = reversed.map((w, revIdx) => {
+      const originalIdx = state.current.weighings.length - 1 - revIdx;
+      const isLatest = revIdx === 0;
+      return `
+        <div class="d-flex justify-content-between align-items-center py-2 weighing-row">
+          <div class="d-flex align-items-center">
+            <span class="idx small">#${originalIdx + 1}</span>
+            <span class="ms-1">
+              <strong>${w.bags}</strong> ${w.bags === 1 ? 'saco' : 'sacos'}
+              <span class="text-muted mx-1">·</span>
+              ${fmtKg(w.kg)} kg
+            </span>
+            ${isLatest ? '<span class="badge bg-primary-subtle text-primary-emphasis ms-2 small">último</span>' : ''}
+          </div>
+          <button class="btn btn-sm btn-outline-danger border-0" onclick="removeWeighing(${originalIdx})">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Lotes guardados
+  const batches = document.getElementById('batchesList');
+  if (state.batches.length === 0) {
+    batches.textContent = 'Sin lotes guardados';
+  } else {
+    batches.innerHTML = state.batches.map(b => {
+      const bBags = b.weighings.reduce((s, x) => s + Number(x.bags || 0), 0);
+      const bKg   = b.weighings.reduce((s, x) => s + Number(x.kg || 0), 0);
+      const bUsd  = bKg * b.pricePerKg;
+      const bBs   = bUsd * b.exchangeRate;
+      return `
+        <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+          <div class="me-2" style="min-width:0;">
+            <div class="fw-semibold text-dark text-truncate">${b.name}</div>
+            <div class="small">${bBags} sacos · ${fmtKg(bKg)} kg · ${fmtUsd(bUsd)} · ${fmtBs(bBs)}</div>
+          </div>
+          <div class="d-flex gap-1 flex-shrink-0">
+            <button class="btn btn-sm btn-outline-primary" onclick="loadBatch('${b.id}')" title="Cargar">
+              <i class="bi bi-box-arrow-in-down"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteBatch('${b.id}')" title="Eliminar">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+// ══════════ ACCIONES ══════════
+function addWeighing() {
+  const bagsInput = document.getElementById('inputBags');
+  const kgInput = document.getElementById('inputKg');
+  const bags = parseInt(bagsInput.value);
+  const kg = parseFloat(kgInput.value);
+  if (!bags || bags < 1 || !kg || kg <= 0) {
+    alert('Ingresa cantidad de sacos y peso válidos.');
+    return;
+  }
+  state.current.weighings.push({ bags, kg });
+  bagsInput.value = '';
+  kgInput.value = '';
+  bagsInput.focus();
+  saveState();
+  render();
+}
+
+function removeWeighing(i) {
+  state.current.weighings.splice(i, 1);
+  saveState();
+  render();
+}
+
+// ══════════ MODAL CONFIG ══════════
+function openConfigModal() {
+  document.getElementById('modalPrice').value = state.current.pricePerKg;
+  document.getElementById('modalRate').value = state.current.exchangeRate;
+  document.getElementById('modalSource').value = state.current.rateSource;
+  document.getElementById('rateInfo').textContent = 'Editable manualmente';
+}
+
+document.getElementById('configModal').addEventListener('show.bs.modal', openConfigModal);
+
+document.getElementById('btnApplyConfig').addEventListener('click', () => {
+  state.current.pricePerKg = parseFloat(document.getElementById('modalPrice').value) || 0;
+  state.current.exchangeRate = parseFloat(document.getElementById('modalRate').value) || 0;
+  state.current.rateSource = document.getElementById('modalSource').value;
+  saveState();
+  render();
+});
+
+document.getElementById('btnFetchRate').addEventListener('click', async () => {
+  const source = document.getElementById('modalSource').value;
+  const info = document.getElementById('rateInfo');
+  const rateInput = document.getElementById('modalRate');
+
+  if (source === 'Manual') {
+    info.textContent = 'Selecciona una fuente distinta a Manual.';
+    return;
+  }
+
+  info.textContent = 'Consultando…';
+  rateInput.disabled = true;
+
+  try {
+    let value = null;
+    let updatedAt = null;
+
+    if (source === 'BCV') {
+      const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      value = data.promedio;
+      updatedAt = data.fechaActualizacion;
+
+    } else if (source === 'Paralelo') {
+      const res = await fetch('https://ve.dolarapi.com/v1/dolares/paralelo');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      value = data.promedio;
+      updatedAt = data.fechaActualizacion;
+
+    } else if (source === 'P2P') {
+      // P2P no está cubierto por DolarApi. Fallback a caché o manual.
+      const cached = state.rateCache?.['P2P'];
+      if (cached) {
+        rateInput.value = Number(cached.value).toFixed(2);
+        info.textContent = 'P2P no disponible automáticamente. Última guardada: ' + 
+          new Date(cached.updatedAt).toLocaleString('es-VE');
+      } else {
+        info.textContent = 'P2P no tiene fuente gratuita automática. Ingresa manualmente.';
+      }
+      rateInput.disabled = false;
+      return;
+    }
+
+    if (value == null) throw new Error('Sin dato');
+
+    rateInput.value = Number(value).toFixed(2);
+    info.textContent = 'Actualizado: ' + new Date(updatedAt).toLocaleString('es-VE');
+
+    // Guardar en caché local
+    state.rateCache = state.rateCache || {};
+    state.rateCache[source] = { value: Number(value), updatedAt };
+    saveState();
+
+  } catch (err) {
+    // Fallback a caché local
+    const cached = state.rateCache?.[source];
+    if (cached) {
+      rateInput.value = Number(cached.value).toFixed(2);
+      info.textContent = 'Sin conexión. Última tasa: ' + new Date(cached.updatedAt).toLocaleString('es-VE');
+    } else {
+      info.textContent = 'Error al consultar. Ingresa la tasa manualmente.';
+    }
+  } finally {
+    rateInput.disabled = false;
+  }
+});
+
+// ══════════ MODAL NOMBRE DEL LOTE ══════════
+function openNameModal() {
+  if (state.current.weighings.length === 0) {
+    alert('No hay pesajes para guardar.');
+    return;
+  }
+  const defaultName = 'Lote ' + new Date().toLocaleString('es-VE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const input = document.getElementById('batchNameInput');
+  input.value = defaultName;
+  const modal = new bootstrap.Modal(document.getElementById('nameModal'));
+  modal.show();
+  // Foco y selección al abrir
+  document.getElementById('nameModal').addEventListener('shown.bs.modal', () => {
+    input.focus();
+    input.select();
+  }, { once: true });
+}
+
+document.getElementById('btnSaveBatch').addEventListener('click', openNameModal);
+
+document.getElementById('btnConfirmSaveBatch').addEventListener('click', () => {
+  const name = document.getElementById('batchNameInput').value.trim();
+  if (!name) return;
+  state.batches.unshift({
+    id: 'b_' + Date.now(),
+    name,
+    weighings: [...state.current.weighings],
+    pricePerKg: state.current.pricePerKg,
+    exchangeRate: state.current.exchangeRate,
+    rateSource: state.current.rateSource,
+    createdAt: new Date().toISOString()
+  });
+  saveState();
+  render();
+  bootstrap.Modal.getInstance(document.getElementById('nameModal')).hide();
+});
+
+function loadBatch(id) {
+  const b = state.batches.find(x => x.id === id);
+  if (!b) return;
+  state.current = {
+    weighings: [...b.weighings],
+    pricePerKg: b.pricePerKg,
+    exchangeRate: b.exchangeRate,
+    rateSource: b.rateSource
+  };
+  saveState();
+  render();
+}
+
+function deleteBatch(id) {
+  if (!confirm('¿Eliminar este lote?')) return;
+  state.batches = state.batches.filter(x => x.id !== id);
+  saveState();
+  render();
+}
+
+function newBatch() {
+  if (state.current.weighings.length > 0 && !confirm('Se limpiarán los pesajes actuales. ¿Continuar?')) return;
+  state.current.weighings = [];
+  saveState();
+  render();
+}
+
+document.getElementById('btnNewBatch').addEventListener('click', newBatch);
+document.getElementById('btnAddWeighing').addEventListener('click', addWeighing);
+
+// Enter para agregar rápido
+document.getElementById('inputKg').addEventListener('keydown', e => { if (e.key === 'Enter') addWeighing(); });
+document.getElementById('inputBags').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('inputKg').focus(); });
+
+// Enter en el modal de nombre para confirmar
+document.getElementById('batchNameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btnConfirmSaveBatch').click();
+});
+
+// ══════════ ESTADO DE RED ══════════
+function updateConnBadge() {
+  const badge = document.getElementById('connBadge');
+  if (navigator.onLine) {
+    badge.className = 'badge badge-online';
+    badge.textContent = 'En línea';
+  } else {
+    badge.className = 'badge badge-offline';
+    badge.textContent = 'Sin conexión';
+  }
+}
+window.addEventListener('online', updateConnBadge);
+window.addEventListener('offline', updateConnBadge);
+
+// ══════════ INIT ══════════
+loadState();
+render();
+updateConnBadge();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js')
+      .then(() => console.log('Service Worker registrado'))
+      .catch(err => console.log('Error:', err));
+  });
+}
+</script>
+</body>
+</html>
